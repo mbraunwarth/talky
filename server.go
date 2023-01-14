@@ -120,7 +120,7 @@ func (s *Server) readLoop(client Client) {
 func (s *Server) broadcast() {
 	for msg := range s.messages {
 		for _, client := range s.clients {
-			fmt.Fprintf(client.conn, "%s> %s\n", msg.from.name, msg.payload)
+			writeTo(client, msg)
 		}
 	}
 }
@@ -137,4 +137,8 @@ func (s *Server) shutdown() error {
 	//	}
 	//}
 	return nil
+}
+
+func writeTo(client Client, msg Message) {
+	fmt.Fprintf(client.conn, "%s> %s\n", msg.from.name, msg.payload)
 }
