@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"time"
 )
 
@@ -48,7 +49,8 @@ func NewServer() *Server {
 // The Start function sets up the servers listener and returns possible errors.
 // It is also responsible for shutdown handling, hence a nil error means a graceful
 // server shutdown.
-func (s *Server) Start() error {
+// func (s *Server) Start() error {
+func (s *Server) Start(intch chan os.Signal) error {
 	// TODO outsource magic strings and numbers to args or even config struct
 	ln, err := net.Listen("tcp", "localhost:2000")
 	if err != nil {
@@ -64,8 +66,12 @@ func (s *Server) Start() error {
 	go s.broadcast()
 
 	// shutdown once the server received a quit signal
-	<-s.quitch
-	return s.shutdown()
+	<-intch
+	s.quitch <- struct{}{} // TODO make quitting work right, currently <C-c> (aka SIGINT kills the server ungracefully)
+
+	s.shutdown()
+
+	return nil
 }
 
 // acceptLoop accept incoming connections and fires up a goroutine for each one.
@@ -73,7 +79,7 @@ func (s *Server) acceptLoop() {
 	for {
 		conn, err := s.ln.Accept()
 		if err != nil {
-			log.Println(err)
+			log.Println("accept error:", err)
 			continue
 		}
 
@@ -84,12 +90,10 @@ func (s *Server) acceptLoop() {
 	}
 }
 
-// TODO handing read loop a validated Client instead of raw net.Conn
 // readLoop continuesly reads incoming messages from one connection.
 // The loop can be left if a fatal error occurs or the connection sends
 // an EOF.
 func (s *Server) readLoop(client Client) {
-	// TODO add client to s.clients
 	s.clients = append(s.clients, client)
 
 	buf := make([]byte, 2048)
@@ -100,7 +104,7 @@ func (s *Server) readLoop(client Client) {
 				log.Printf("%s left\n", client.name)
 				break
 			}
-			log.Println(err)
+			log.Println("read error:", err)
 			continue
 		}
 
@@ -118,9 +122,14 @@ func (s *Server) readLoop(client Client) {
 
 // broadcast incoming messages to every connected client.
 func (s *Server) broadcast() {
-	for msg := range s.messages {
-		for _, client := range s.clients {
-			fmt.Fprintf(client.conn, "%s> %s\n", msg.from.name, msg.payload)
+	for {
+		select {
+		case msg := <-s.messages:
+			for _, client := range s.clients {
+				writeTo(client, msg)
+			}
+		case <-s.quitch:
+			break
 		}
 	}
 }
@@ -129,12 +138,20 @@ func (s *Server) broadcast() {
 // shutdown informs connected users that the server is going offline, collecting
 // potential (non-fatal) errors along the way. If a fatal error occurs, shutdown
 // will return that.
-func (s *Server) shutdown() error {
-	// Pseudo Go
-	//for c := range s.conns {
-	//	if err := c.Write("shutting down the server"); err != nil {
-	//		s.errs = append(s.errs, Error{err})
-	//	}
-	//}
-	return nil
+func (s *Server) shutdown() {
+	shutdownMessage := Message{
+		payload:   []byte("The server got shut down. Disconnected."),
+		from:      Client{name: "Server"},
+		arrivedAt: time.Now(),
+	}
+
+	for _, client := range s.clients {
+		writeTo(client, shutdownMessage)
+	}
+
+	log.Println("Shutting Down")
+}
+
+func writeTo(client Client, msg Message) {
+	fmt.Fprintf(client.conn, "%s> %s\n", msg.from.name, msg.payload)
 }

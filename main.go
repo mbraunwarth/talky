@@ -2,9 +2,14 @@ package main
 
 import (
 	"log"
+	"os"
+	"os/signal"
 )
 
 func main() {
+	intch := make(chan os.Signal)
+	signal.Notify(intch, os.Interrupt)
+
 	server := NewServer()
 	// TODO **Multiple** logs of `use of closed network connection` error
 	//		in stdout, meaning someone tries to use s.ln somewhere after shutdown
@@ -16,6 +21,7 @@ func main() {
 	//}()
 	//------------------------------------
 
-	log.Fatal(server.Start())
+	log.Fatal(server.Start(intch))
+	//log.Fatal(server.Start())
 
 }
