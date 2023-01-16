@@ -40,7 +40,7 @@ type Error error
 func NewServer() *Server {
 	return &Server{
 		quitch:   make(chan struct{}),
-		messages: make(chan Message, 1000),
+		messages: make(chan Message, 10),
 		errs:     make([]Error, 0),
 	}
 }
