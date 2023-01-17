@@ -57,20 +57,21 @@ func (s *Server) Start() error {
 	defer ln.Close()
 
 	s.ln = ln
-	// TODO move close to shutdown??
-	defer ln.Close()
 
 	go s.acceptLoop()
 	go s.broadcast()
 
 	// shutdown once the server received a quit signal
 	<-s.quitch
-	return s.shutdown()
+	s.shutdown()
+	return nil
 }
 
 // acceptLoop accept incoming connections and fires up a goroutine for each one.
 func (s *Server) acceptLoop() {
 	for {
+		// TODO if ln got closed from shutdown, this will fire errors until the
+		//		program finally halts. To solve this, maybe add go routines to work group?
 		conn, err := s.ln.Accept()
 		if err != nil {
 			log.Println(err)
@@ -89,7 +90,7 @@ func (s *Server) acceptLoop() {
 // The loop can be left if a fatal error occurs or the connection sends
 // an EOF.
 func (s *Server) readLoop(client Client) {
-	// TODO add client to s.clients
+	defer client.conn.Close()
 	s.clients = append(s.clients, client)
 
 	buf := make([]byte, 2048)
@@ -125,20 +126,20 @@ func (s *Server) broadcast() {
 	}
 }
 
-// TODO make shutdown
 // shutdown informs connected users that the server is going offline, collecting
 // potential (non-fatal) errors along the way. If a fatal error occurs, shutdown
 // will return that.
-func (s *Server) shutdown() error {
-	// Pseudo Go
-	//for c := range s.conns {
-	//	if err := c.Write("shutting down the server"); err != nil {
-	//		s.errs = append(s.errs, Error{err})
-	//	}
-	//}
-	return nil
+func (s *Server) shutdown() {
+	for _, client := range s.clients {
+		_, err := client.conn.Write([]byte("Shutting down the server"))
+		if err != nil {
+			s.errs = append(s.errs, err)
+		}
+		//client.conn.Close()
+	}
 }
 
+// writeTo writes the message to the given client.
 func writeTo(client Client, msg Message) {
 	fmt.Fprintf(client.conn, "%s> %s\n", msg.from.name, msg.payload)
 }

@@ -6,9 +6,6 @@ import (
 
 func main() {
 	server := NewServer()
-	// TODO **Multiple** logs of `use of closed network connection` error
-	//		in stdout, meaning someone tries to use s.ln somewhere after shutdown
-
 	// remove comment to test quit channel
 	//go func() {
 	//	time.Sleep(10 * time.Second)
@@ -17,5 +14,4 @@ func main() {
 	//------------------------------------
 
 	log.Fatal(server.Start())
-
 }
